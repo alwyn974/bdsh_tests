@@ -18,18 +18,18 @@ function printColor() {
 }
 
 BINARY_NAME=bdsh
-PASSED=""
-FAILED=""
+PASSED=0
+FAILED=0
 FILE="test_file.json"
 
 function fail() {
   printColor "${RED}Failed: $*"
-  FAILED+=1
+  FAILED=$((FAILED + 1))
 }
 
 function pass() {
   printColor "${GREEN}Passed"
-  PASSED+=1
+  PASSED=$((PASSED + 1))
 }
 
 function tests() {
@@ -41,7 +41,7 @@ function tests() {
   rm -f "$FILE"
 
   echo "$FILE" >.bdshrc
-  expect_exit_code "Creating database with .bdshrc" 0 create database
+  expect_exit_code "Creating database with .bdshrc (IGNORE THIS)" 0 create database
   rm -f "$FILE"
   rm -f ".bdshrc"
 
@@ -103,13 +103,97 @@ function tests() {
   expect_exit_code "Create database" 0 -f "$FILE" create database
   expect_exit_code "Database already exist" 1 -f "$FILE" create database
   rm -f "$FILE"
+  expect_exit_code "Create with bad argument" 1 -f "$FILE" create data
+  expect_exit_code "Create with bad argument" 1 -F "$FILE" create tabl
 
   expect_exit_code_and_json "Create database" 0 '{}' -f "$FILE" create database
   expect_exit_code_and_json "Create table 1" 0 '{"desc_user": ["id", "firstname", "lastname"], "data_user": []}' -f "$FILE" create table user id,firstname,lastname
   expect_exit_code_and_json "Create table 2" 0 '{"desc_user": ["id", "firstname", "lastname"], "desc_age": ["id", "age"], "data_user": [], "data_age": []}' -f "$FILE" create table age id,age
   expect_exit_code_and_json "Create table 3" 0 '{"desc_user": ["id", "firstname", "lastname"], "desc_age": ["id", "age"], "desc_toto": ["id", "toto"], "data_user": [], "data_age": [], "data_toto": []}' -f "$FILE" create table toto id,toto
+  expect_exit_code "Create table already exist 1" 1 -f "$FILE" create table user id,firstname,lastname
+  expect_exit_code "Create table already exist 2" 1 -f "$FILE" create table age id,age
+  expect_exit_code "Create table already exist 3" 1 -f "$FILE" create table toto id,toto
 
+  echo "Checking insert command"
+  expect_exit_code "Insert with no table name" 1 -f "$FILE" insert
+  expect_exit_code "Insert without keys" 1 -f "$FILE" insert toto
+  expect_exit_code "Insert in table that doesn't exist" 1 -f "$FILE" insert coucou "tata=1"
+  expect_exit_code "Insert with one bad keys" 1 -f "$FILE" insert user "too=1"
+  expect_exit_code "Insert with one good key and one bad" 1 -f "$FILE" insert user "id=1,too=0"
+  expect_exit_code "Insert a key with no value" 1 -f "$FILE" insert user id
+  #expect_exit_code "Insert with empty keys (IGNORE THIS)" 1 -f "$FILE" insert user ""
+  expect_exit_code "Insert key with empty value" 1 -f "$FILE" insert user "id="
+  expect_exit_code "Insert duplicate keys" 1 -f "$FILE" insert user "id=1,id=2"
 
+  expect_exit_code_and_json "Simple insert" 0 '{"desc_user":["id","firstname","lastname"],"desc_age":["id","age"],"desc_toto":["id","toto"],"data_user":[{"id":"1","firstname":"marvin","lastname":"robot"}],"data_age":[],"data_toto":[]}' -f "$FILE" insert user "id=1,firstname=marvin,lastname=robot"
+
+  #rm -f "$FILE"
+}
+
+function expect_exit_code_and_json_on_stdout() {
+  local msg="$1"
+  local expected_code="$2"
+  local json="$3"
+  shift
+  shift
+  shift
+  echo "---------------------------------------------"
+  echo "Tests: $msg"
+  echo "./$BINARY_NAME $*"
+  echo "-----"
+  echo "Expectation: Exit code must be $expected_code"
+  echo "Expectation: Json must be $json"
+  echo "---"
+  EXIT1=$expected_code
+
+  jsonTest=$(./$BINARY_NAME "$@" | jq -reM)
+  EXIT2=$?
+
+  if [ ! "$EXIT1" = "$EXIT2" ]; then
+    fail "Exit code are different (expected $EXIT1, got $EXIT2)."
+    return
+  fi
+
+  goodJson=$(echo "$json" | jq -reM)
+
+  if [ ! "$goodJson" = "$jsonTest" ]; then
+    fail "Json is not equivalent (expected $goodJson, got $jsonTest)"
+    return
+  fi
+
+  pass
+}
+
+function expect_exit_code_and_stdout() {
+  local msg="$1"
+  local expected_code="$2"
+  local output="$3"
+  shift
+  shift
+  shift
+  echo "---------------------------------------------"
+  echo "Tests: $msg"
+  echo "./$BINARY_NAME $*"
+  echo "-----"
+  echo "Expectation: Exit code must be $expected_code"
+  echo "Expectation: Output must be $output"
+  echo "---"
+  EXIT1=$expected_code
+
+  outputTest=$(./$BINARY_NAME "$@")
+  EXIT2=$?
+
+  if [ ! "$EXIT1" = "$EXIT2" ]; then
+    fail "Exit code are different (expected $EXIT1, got $EXIT2)."
+    return
+  fi
+
+  if [ ! "$output" = "$outputTest" ]; then
+    fail "Output is not equivalent (expected $goodJson, got $jsonTest)"
+    return
+  fi
+
+  pass
 }
 
 function expect_exit_code_and_json() {
@@ -183,7 +267,7 @@ function check_binary() {
 }
 
 function total() {
-  echo -e "\nTests passed: $(echo -n $PASSED | wc -m). Tests failed: $(echo -n $FAILED | wc -m)."
+  echo -e "\nTests passed: $PASSED. Tests failed: $FAILED"
 }
 
 function main() {
