@@ -21,6 +21,60 @@ BINARY_NAME=bdsh
 PASSED=0
 FAILED=0
 FILE="test_file.json"
+SAMPLE_FILE='
+{
+  "desc_user": [
+    "id",
+    "firstname",
+    "lastname"
+  ],
+  "desc_age": [
+    "id",
+    "age"
+  ],
+  "desc_empty": [
+    "empty"
+  ],
+  "data_user": [
+    {
+      "id": "1",
+      "firstname": "John",
+      "lastname" : "SMITH"
+    },
+    {
+      "id": "4",
+      "firstname": "Robert John",
+      "lastname" : "WILLIAMS"
+    },
+    {
+      "id": "2",
+      "firstname": "Lisa",
+      "lastname" : "SIMPSON"
+    },
+    {
+      "id": "10",
+      "firstname": "",
+      "lastname" : "SMITH"
+    },
+    {
+      "id": "",
+      "firstname": "Laura",
+      "lastname" : "SMITH"
+    },
+    {
+      "id": "9",
+      "firstname": "",
+      "lastname" : ""
+    }
+  ],
+  "data_age": [
+    {
+      "id": "1",
+      "age": "42"
+    }
+  ],
+  "data_empty": []
+}'
 
 function fail() {
   printColor "${RED}Failed: $*"
@@ -126,8 +180,29 @@ function tests() {
   expect_exit_code "Insert duplicate keys" 1 -f "$FILE" insert user "id=1,id=2"
 
   expect_exit_code_and_json "Simple insert" 0 '{"desc_user":["id","firstname","lastname"],"desc_age":["id","age"],"desc_toto":["id","toto"],"data_user":[{"id":"1","firstname":"marvin","lastname":"robot"}],"data_age":[],"data_toto":[]}' -f "$FILE" insert user "id=1,firstname=marvin,lastname=robot"
+  expect_exit_code_and_json "Insert with two missing value" 0 '{"desc_user":["id","firstname","lastname"],"desc_age":["id","age"],"desc_toto":["id","toto"],"data_user":[{"id":"1","firstname":"marvin","lastname":"robot"},{"id":"","firstname":"who","lastname":""}],"data_age":[],"data_toto":[]}' -f "$FILE" insert user "firstname=who"
+  expect_exit_code_and_json "Insert with one missing value" 0 '{"desc_user":["id","firstname","lastname"],"desc_age":["id","age"],"desc_toto":["id","toto"],"data_user":[{"id":"1","firstname":"marvin","lastname":"robot"},{"id":"","firstname":"who","lastname":""},{"id":"1","firstname":"","lastname":"what"}],"data_age":[],"data_toto":[]}' -f "$FILE" insert user "id=1,lastname=what"
+  expect_exit_code_and_json "Insert in second table" 0 '{"desc_user":["id","firstname","lastname"],"desc_age":["id","age"],"desc_toto":["id","toto"],"data_user":[{"id":"1","firstname":"marvin","lastname":"robot"},{"id":"","firstname":"who","lastname":""},{"id":"1","firstname":"","lastname":"what"}],"data_age":[{"id":"1","age":"0"}],"data_toto":[]}' -f "$FILE" insert age "id=1,age=0"
+  expect_exit_code_and_json "Insert in second table with missing value" 0 '{"desc_user":["id","firstname","lastname"],"desc_age":["id","age"],"desc_toto":["id","toto"],"data_user":[{"id":"1","firstname":"marvin","lastname":"robot"},{"id":"","firstname":"who","lastname":""},{"id":"1","firstname":"","lastname":"what"}],"data_age":[{"id":"1","age":"0"},{"id":"","age":"1"}],"data_toto":[]}' -f "$FILE" insert age "age=1"
+  expect_exit_code_and_json "Insert in third table" 0 '{"desc_user":["id","firstname","lastname"],"desc_age":["id","age"],"desc_toto":["id","toto"],"data_user":[{"id":"1","firstname":"marvin","lastname":"robot"},{"id":"","firstname":"who","lastname":""},{"id":"1","firstname":"","lastname":"what"}],"data_age":[{"id":"1","age":"0"},{"id":"","age":"1"}],"data_toto":[{"id":"1","toto":"toto"}]}' -f "$FILE" insert toto "id=1,toto=toto"
+  expect_exit_code_and_json "Insert in third table with missing value" 0 '{"desc_user":["id","firstname","lastname"],"desc_age":["id","age"],"desc_toto":["id","toto"],"data_user":[{"id":"1","firstname":"marvin","lastname":"robot"},{"id":"","firstname":"who","lastname":""},{"id":"1","firstname":"","lastname":"what"}],"data_age":[{"id":"1","age":"0"},{"id":"","age":"1"}],"data_toto":[{"id":"1","toto":"toto"},{"id":"","toto":"1"}]}' -f "$FILE" insert toto "toto=1"
 
-  #rm -f "$FILE"
+  rm -f "$FILE"
+  echo "Checking select command"
+  touch "$FILE"
+
+  expect_exit_code "Select on empty database" 1 -f "$FILE" select user id
+  expect_exit_code "Select on missing table" 1 -f "$FILE" select nothing id
+  echo "$SAMPLE_FILE" >"$FILE"
+
+  expect_exit_code "Select with bad keys" 1 -f "$FILE" select user what
+  expect_exit_code "Select with one bad key" 1 -f "$FILE" select user id,what,lastname
+  #expect_exit_code "Select with no keys" 1 -f "$FILE" select user ""
+  expect_exit_code "Select on empty table" 1 -f "$FILE" select empty empty
+
+  expect_exit_code_and_stdout "Select on user table" 0 "firstname    | lastname  \n-------------------------\nJohn         | SMITH     \nRobert John  | WILLIAMS  \nLisa         | SIMPSON   \n             | SMITH     \nLaura        | SMITH     \n             |           \n" -f "$FILE" select user firstname,lastname
+  expect_exit_code_and_stdout "Select on user table with all keys" 0 "id  | firstname    | lastname  \n-------------------------------\n1   | John         | SMITH     \n4   | Robert John  | WILLIAMS  \n2   | Lisa         | SIMPSON   \n10  |              | SMITH     \n    | Laura        | SMITH     \n9   |              |           \n" -f "$FILE" select user id,firstname,lastname
+
 }
 
 function expect_exit_code_and_json_on_stdout() {
@@ -176,11 +251,11 @@ function expect_exit_code_and_stdout() {
   echo "./$BINARY_NAME $*"
   echo "-----"
   echo "Expectation: Exit code must be $expected_code"
-  echo "Expectation: Output must be $output"
+  echo -e "Expectation: Output must be \n$output"
   echo "---"
   EXIT1=$expected_code
 
-  outputTest=$(./$BINARY_NAME "$@")
+  outputTest=$(./$BINARY_NAME "$@" | cat -e)
   EXIT2=$?
 
   if [ ! "$EXIT1" = "$EXIT2" ]; then
@@ -188,8 +263,15 @@ function expect_exit_code_and_stdout() {
     return
   fi
 
+  output=$(echo -ne "$output" | cat -e)
+
   if [ ! "$output" = "$outputTest" ]; then
-    fail "Output is not equivalent (expected $goodJson, got $jsonTest)"
+    fail "Output is not equivalent"
+    printColor "${RED}Expected"
+    printColor "${RED}$output"
+    printColor "${RED}-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-"
+    printColor "${RED}Got"
+    printColor "${RED}$outputTest"
     return
   fi
 
