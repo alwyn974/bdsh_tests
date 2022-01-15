@@ -202,6 +202,9 @@ function tests() {
 
   expect_exit_code_and_stdout "Select on user table" 0 "firstname    | lastname  \n-------------------------\nJohn         | SMITH     \nRobert John  | WILLIAMS  \nLisa         | SIMPSON   \n             | SMITH     \nLaura        | SMITH     \n             |           \n" -f "$FILE" select user firstname,lastname
   expect_exit_code_and_stdout "Select on user table with all keys" 0 "id  | firstname    | lastname  \n-------------------------------\n1   | John         | SMITH     \n4   | Robert John  | WILLIAMS  \n2   | Lisa         | SIMPSON   \n10  |              | SMITH     \n    | Laura        | SMITH     \n9   |              |           \n" -f "$FILE" select user id,firstname,lastname
+  expect_exit_code_and_json_on_stdout "Select on user table to json output with all keys" 0 '[{"id":"1","firstname":"John","lastname":"SMITH"},{"id":"4","firstname":"Robert John","lastname":"WILLIAMS"},{"id":"2","firstname":"Lisa","lastname":"SIMPSON"},{"id":"10","firstname":"","lastname":"SMITH"},{"id":"","firstname":"Laura","lastname":"SMITH"},{"id":"9","firstname":"","lastname":""}]' -f "$FILE" -j select user id,firstname,lastname
+  expect_exit_code_and_json_on_stdout "Select on user table to json output with some keys" 0 '[{"id":"1","lastname":"SMITH"},{"id":"4","lastname":"WILLIAMS"},{"id":"2","lastname":"SIMPSON"},{"id":"10","lastname":"SMITH"},{"id":"","lastname":"SMITH"},{"id":"9","lastname":""}]' -f "$FILE" -j select user id,lastname
+  expect_exit_code_and_stdout "Select on user table with disordered keys" 0 "lastname  | firstname    | id  \n-------------------------------\nSMITH     | John         | 1   \nWILLIAMS  | Robert John  | 4   \nSIMPSON   | Lisa         | 2   \nSMITH     |              | 10  \nSMITH     | Laura        |     \n          |              | 9   \n" -f "$FILE" select user lastname,firstname,id
 
 }
 
