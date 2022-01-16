@@ -348,6 +348,7 @@ function check_binary() {
     echo "Please install it with:"
     echo "Ubuntu => sudo apt install jq"
     echo "Fedora => sudo dnf install jq"
+    exit 1
   fi
 }
 
